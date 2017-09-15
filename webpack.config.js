@@ -26,18 +26,16 @@ module.exports = {
         stats: { colors: true },
     },
     module: {
-        rules: [
-            {
-                test: /\.elm$/,
-                exclude: [path.resolve('node_modules'), path.resolve('elm-stuff')],
-                loader: 'elm-webpack-loader',
-                options: {
-                    verbose: true,
-                    warn: true
-                }
-
+        rules: [{
+            test: /\.elm$/,
+            exclude: [path.resolve('node_modules'), path.resolve('elm-stuff')],
+            loader: 'elm-webpack-loader',
+            options: {
+                verbose: true,
+                warn: true
             }
-        ],
+
+        }],
         noParse: /\.elm$/
     },
     plugins: [
