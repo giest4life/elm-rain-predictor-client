@@ -23,7 +23,7 @@ type alias Model =
 
 init : ( Model, Cmd Msg )
 init =
-    ( "Hello, from elm!", Cmd.none )
+    ( "Hello, elm!", Cmd.none )
 
 
 
