@@ -1,11 +1,12 @@
 module Main exposing (main)
 
-import Html exposing (Html, div, text, program, br, input, form, nav, a)
+import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th)
 import Html.Attributes exposing (class, type_, placeholder, id, value, href)
 import Html.Events exposing (onInput, onSubmit)
 import Html.Attributes exposing (class)
 import Http
 import Date
+import Date.Format as DF
 import Json.Decode as Decode
 
 
@@ -134,7 +135,7 @@ predictionDecoder =
             Decode.float |> Decode.andThen convert
 
         convert =
-            Decode.succeed << Date.fromTime
+            Decode.succeed << Date.fromTime << (*) 1000
     in
         Decode.map3 Prediction
             (Decode.field "time" dateDecoder)
@@ -169,6 +170,7 @@ view model =
         , br [] []
         , searchInput model.currentInput
         , br [] []
+        , showPredictions model.currently model.predictions
         ]
 
 
@@ -199,3 +201,43 @@ navbar =
             a [ class "nav-link", href "#" ] [ text link ]
     in
         nav [ navclass ] [ div [ class "navbar-nav" ] [ navlink "Home" ] ]
+
+
+predictionsTable : List Prediction -> Html Msg
+predictionsTable preds =
+    let
+        header =
+            thead [ class "thead-inverse" ] [ headerRow ]
+
+        headerRow =
+            tr []
+                [ th [] [ text "Time" ]
+                , th [] [ text "Conditions" ]
+                , th [] [ text "Probability" ]
+                ]
+
+        tableBody =
+            tbody [] <| List.map predToRow preds
+
+        predToRow pred =
+            tr []
+                [ td [] [ text << DF.format "%A" <| pred.time ]
+                , td [] [ text pred.summary ]
+                , td [] [ text << toString <| pred.precipProbability ]
+                ]
+    in
+        table [ class "table" ] [ header, tableBody ]
+
+
+
+-- No need to show current if no other predictions available
+
+
+showPredictions : Prediction -> List Prediction -> Html Msg
+showPredictions current preds =
+    case preds of
+        [] ->
+            predictionsTable []
+
+        _ ->
+            predictionsTable (current :: preds)

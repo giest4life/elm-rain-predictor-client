@@ -1,4 +1,6 @@
-module Utils exposing (format)
+module Utils exposing (format, dateToString)
+
+import Date
 
 
 format : List String -> String -> String
@@ -13,3 +15,18 @@ format vals =
                     w ++ w1
     in
         String.concat << List.map2 zip vals << String.split "%s"
+
+
+dateToString : Date.Date -> String
+dateToString date =
+    let
+        vals =
+            [ toString << Date.dayOfWeek <| date
+            , toString << Date.hour <| date
+            , toString << Date.minute <| date
+            ]
+
+        print =
+            Debug.log "time" date
+    in
+        format vals "%s %s:%s"
