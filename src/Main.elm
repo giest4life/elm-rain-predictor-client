@@ -1,4 +1,4 @@
-module Main exposing (..)
+module Main exposing (main)
 
 import Html exposing (Html, div, text, program, br, input, form, nav, a)
 import Html.Attributes exposing (class, type_, placeholder, id, value, href)
@@ -7,6 +7,11 @@ import Html.Attributes exposing (class)
 import Http
 import Date
 import Json.Decode as Decode
+
+
+-- USER DEFINED IMPORTS
+
+import Utils
 
 
 main : Program Never Model Msg
@@ -106,7 +111,10 @@ fetchPredictionResult : Cmd Msg
 fetchPredictionResult =
     let
         url =
-            "/api/predict?longitude=-74.00597&latitude=40.71427"
+            Utils.format strCoords "/api/predict?longitude=%s&latitude=%s"
+
+        strCoords =
+            List.map toString [ -74.00597, 40.71427 ]
 
         request =
             Http.get url responseDecoder
