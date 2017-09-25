@@ -11,7 +11,6 @@ module.exports = {
         filename: '[name].[chunkhash].bundle.js',
         path: path.resolve(__dirname, 'dist'),
     },
-    devtool: 'source-map',
     devServer: {
         contentBase: './dist',
         compress: true,
