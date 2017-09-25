@@ -1,8 +1,8 @@
 module Main exposing (main)
 
-import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th)
-import Html.Attributes exposing (class, type_, placeholder, id, value, href)
-import Html.Events exposing (onInput, onSubmit)
+import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th, datalist, option)
+import Html.Attributes exposing (class, type_, placeholder, id, value, href, autocomplete, autofocus, list)
+import Html.Events exposing (onInput, onSubmit, onClick)
 import Html.Attributes exposing (class)
 import Http
 import Date
@@ -31,15 +31,15 @@ main =
 
 type alias Model =
     { currentInput : String
-    , coordinates : Coordinates
-    , currently : Prediction
+    , inputSelected : Bool
+    , selectedLocation : Maybe Location
+    , suggestedLocations : List Location
+    , highlightedLocation : Maybe Location
+    , showSuggestions : Bool
+    , autocompleted : Bool
+    , showPredictions : Bool
+    , currently : Maybe Prediction
     , predictions : List Prediction
-    }
-
-
-type alias Coordinates =
-    { longitude : Float
-    , latitude : Float
     }
 
 
@@ -47,6 +47,18 @@ type alias Prediction =
     { time : Date.Date
     , precipProbability : Float
     , summary : String
+    }
+
+
+type alias Location =
+    { geonameId : Float
+    , locationName : String
+    , longitude : Float
+    , latitude : Float
+    , countryCode : String
+    , countryName : String
+    , admin1Code : String
+    , admin1Name : String
     }
 
 
@@ -59,20 +71,17 @@ type alias PredictionResponse =
 init : ( Model, Cmd Msg )
 init =
     let
-        coordinates =
-            { longitude = -74.00597, latitude = 40.71427 }
+        selectedLocation =
+            Location 5128581 "New York City" -74.00597 40.71427 "US" "United States of America" "NY" "New York"
 
         currentInput =
             "New York City, NY"
 
-        currently =
-            { time = Date.fromTime 0.0, precipProbability = 0.0, summary = "" }
-
         model =
-            { currentInput = currentInput, coordinates = coordinates, currently = currently, predictions = [] }
+            Model currentInput False (Just selectedLocation) [] Nothing False False False Nothing []
     in
         ( model
-        , Cmd.none
+        , fetchPredictionResult model.selectedLocation
         )
 
 
@@ -87,14 +96,14 @@ update msg model =
             ( model, Cmd.none )
 
         NewInput input ->
-            ( { model | currentInput = input }, Cmd.none )
+            handleSearchInput model input
 
-        FetchPredictionResult ->
-            ( model, fetchPredictionResult )
+        FetchPredictionResult location ->
+            ( model, fetchPredictionResult location )
 
         PredictionResult (Ok result) ->
             ( { model
-                | currently = result.currently
+                | currently = Just result.currently
                 , predictions = result.predictions
               }
             , Cmd.none
@@ -107,25 +116,87 @@ update msg model =
             in
                 ( model, Cmd.none )
 
+        LocationQuery query ->
+            ( model, fetchLocationResult query )
 
-fetchPredictionResult : Cmd Msg
-fetchPredictionResult =
+        LocationSelect location ->
+            ( { model
+                | currentInput = formatLocationResult location
+                , showSuggestions = False
+              }
+            , handleLocationSelect (Just location)
+            )
+
+        LocationResult (Ok locations) ->
+            ( { model | suggestedLocations = locations }, Cmd.none )
+
+        LocationResult (Err error) ->
+            let
+                _ =
+                    Debug.log "Error" error
+            in
+                ( model, Cmd.none )
+
+
+handleLocationSelect : Maybe Location -> Cmd Msg
+handleLocationSelect =
+    fetchPredictionResult
+
+
+fetchPredictionResult : Maybe Location -> Cmd Msg
+fetchPredictionResult l =
+    case l of
+        Nothing ->
+            Cmd.none
+
+        Just location ->
+            let
+                url =
+                    Utils.format strCoords "/api/predict?longitude=%s&latitude=%s"
+
+                strCoords =
+                    List.map toString [ location.longitude, location.latitude ]
+
+                request =
+                    Http.get url responseDecoder
+
+                responseDecoder =
+                    Decode.map2 PredictionResponse
+                        (Decode.field "currently" predictionDecoder)
+                        (Decode.at [ "hourly", "data" ] <| Decode.list predictionDecoder)
+            in
+                Http.send PredictionResult request
+
+
+fetchLocationResult : String -> Cmd Msg
+fetchLocationResult query =
     let
         url =
-            Utils.format strCoords "/api/predict?longitude=%s&latitude=%s"
-
-        strCoords =
-            List.map toString [ -74.00597, 40.71427 ]
+            Utils.format [ query ] "api/locations?query=%s"
 
         request =
             Http.get url responseDecoder
 
         responseDecoder =
-            Decode.map2 PredictionResponse
-                (Decode.field "currently" predictionDecoder)
-                (Decode.at [ "hourly", "data" ] <| Decode.list predictionDecoder)
+            Decode.list locationDecoder
     in
-        Http.send PredictionResult request
+        Http.send LocationResult request
+
+
+
+-- INPUT KEYBOARD EVENTS
+
+
+handleSearchInput : Model -> String -> ( Model, Cmd Msg )
+handleSearchInput model input =
+    if String.length input > 3 then
+        ( { model | currentInput = input, showSuggestions = True }, fetchLocationResult input )
+    else
+        ( { model | currentInput = input, showSuggestions = False }, Cmd.none )
+
+
+
+-- DECODERS
 
 
 predictionDecoder : Decode.Decoder Prediction
@@ -143,6 +214,19 @@ predictionDecoder =
             (Decode.field "summary" Decode.string)
 
 
+locationDecoder : Decode.Decoder Location
+locationDecoder =
+    Decode.map8 Location
+        (Decode.field "geonameId" Decode.float)
+        (Decode.field "locationName" Decode.string)
+        (Decode.field "longitude" Decode.float)
+        (Decode.field "latitude" Decode.float)
+        (Decode.field "countryCode" Decode.string)
+        (Decode.field "countryName" Decode.string)
+        (Decode.field "admin1Code" Decode.string)
+        (Decode.field "admin1Name" Decode.string)
+
+
 
 -- MESSAGES
 
@@ -150,7 +234,10 @@ predictionDecoder =
 type Msg
     = NoOp
     | NewInput String
-    | FetchPredictionResult
+    | LocationQuery String
+    | LocationSelect Location
+    | LocationResult (Result Http.Error (List Location))
+    | FetchPredictionResult (Maybe Location)
     | PredictionResult
         (Result Http.Error
             { currently : Prediction
@@ -168,27 +255,29 @@ view model =
     div [ class "container" ]
         [ navbar
         , br [] []
-        , searchInput model.currentInput
-        , br [] []
+        , searchInput model.currentInput model.suggestedLocations
+        , showLocationResults model.suggestedLocations
         , showPredictions model.currently model.predictions
         ]
 
 
-searchInput : String -> Html Msg
-searchInput val =
+searchInput : String -> List Location -> Html Msg
+searchInput val locations =
     let
         inputField =
             input
                 [ class "form-control"
                 , type_ "text"
-                , placeholder "Type a name of city to get rain PredictionResult"
+                , placeholder "Name of a city"
                 , id "search"
                 , onInput NewInput
                 , value val
+                , autofocus True
+                , list "locations"
                 ]
                 []
     in
-        form [ onSubmit FetchPredictionResult ] [ div [ class "form-group" ] [ inputField ] ]
+        form [ onSubmit << LocationQuery <| val ] [ div [ class "form-group" ] [ inputField ] ]
 
 
 navbar : Html Msg
@@ -201,6 +290,21 @@ navbar =
             a [ class "nav-link", href "#" ] [ text link ]
     in
         nav [ navclass ] [ div [ class "navbar-nav" ] [ navlink "Home" ] ]
+
+
+showLocationResults : List Location -> Html Msg
+showLocationResults locations =
+    let
+        locationCard l =
+            div [ class "card border border-secondary", onClick (LocationSelect l) ]
+                [ div [ class "card-body" ] [ text << formatLocationResult <| l ] ]
+    in
+        case locations of
+            [] ->
+                div [] []
+
+            _ ->
+                div [] << List.map locationCard <| locations
 
 
 predictionsTable : List Prediction -> Html Msg
@@ -233,11 +337,21 @@ predictionsTable preds =
 -- No need to show current if no other predictions available
 
 
-showPredictions : Prediction -> List Prediction -> Html Msg
+showPredictions : Maybe Prediction -> List Prediction -> Html Msg
 showPredictions current preds =
-    case preds of
-        [] ->
-            predictionsTable []
+    case current of
+        Nothing ->
+            div [] []
 
-        _ ->
-            predictionsTable (current :: preds)
+        Just c ->
+            case preds of
+                [] ->
+                    div [] []
+
+                _ ->
+                    predictionsTable (c :: preds)
+
+
+formatLocationResult : Location -> String
+formatLocationResult location =
+    location.locationName ++ ", " ++ location.admin1Name
