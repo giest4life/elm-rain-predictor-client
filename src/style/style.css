@@ -1,0 +1,5 @@
+.location-card:hover {
+    background-color: #0074D9;
+    color: white;
+    cursor: pointer;
+}
