@@ -1,7 +1,7 @@
 module Main exposing (main)
 
 import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th, datalist, option)
-import Html.Attributes exposing (class, type_, placeholder, id, value, href, autocomplete, autofocus, list)
+import Html.Attributes exposing (class, hidden, type_, placeholder, id, value, href, autocomplete, autofocus)
 import Html.Events exposing (onInput, onSubmit, onClick)
 import Html.Attributes exposing (class)
 import Http
@@ -34,7 +34,6 @@ type alias Model =
     , inputSelected : Bool
     , selectedLocation : Maybe Location
     , suggestedLocations : List Location
-    , highlightedLocation : Maybe Location
     , showSuggestions : Bool
     , autocompleted : Bool
     , showPredictions : Bool
@@ -68,6 +67,17 @@ type alias PredictionResponse =
     }
 
 
+type alias AutoComplete a =
+    { a
+        | currentInput : String
+        , inputSelected : Bool
+        , showSuggestions : Bool
+        , autocompleted : Bool
+        , selectedLocation : Maybe Location
+        , suggestedLocations : List Location
+    }
+
+
 init : ( Model, Cmd Msg )
 init =
     let
@@ -75,10 +85,10 @@ init =
             Location 5128581 "New York City" -74.00597 40.71427 "US" "United States of America" "NY" "New York"
 
         currentInput =
-            "New York City, NY"
+            "New York City, New York"
 
         model =
-            Model currentInput False (Just selectedLocation) [] Nothing False False False Nothing []
+            Model currentInput False (Just selectedLocation) [] False False False Nothing []
     in
         ( model
         , fetchPredictionResult model.selectedLocation
@@ -95,8 +105,8 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
-        NewInput input ->
-            handleSearchInput model input
+        NewInput newInput ->
+            handleSearchInput newInput model
 
         FetchPredictionResult location ->
             ( model, fetchPredictionResult location )
@@ -187,12 +197,12 @@ fetchLocationResult query =
 -- INPUT KEYBOARD EVENTS
 
 
-handleSearchInput : Model -> String -> ( Model, Cmd Msg )
-handleSearchInput model input =
-    if String.length input > 3 then
-        ( { model | currentInput = input, showSuggestions = True }, fetchLocationResult input )
+handleSearchInput : String -> AutoComplete a -> ( AutoComplete a, Cmd Msg )
+handleSearchInput newInput model =
+    if String.length newInput > 3 then
+        ( { model | currentInput = newInput, showSuggestions = True }, fetchLocationResult newInput )
     else
-        ( { model | currentInput = input, showSuggestions = False }, Cmd.none )
+        ( { model | currentInput = newInput, showSuggestions = False }, Cmd.none )
 
 
 
@@ -203,7 +213,7 @@ predictionDecoder : Decode.Decoder Prediction
 predictionDecoder =
     let
         dateDecoder =
-            Decode.float |> Decode.andThen convert
+            Decode.andThen convert Decode.float
 
         convert =
             Decode.succeed << Date.fromTime << (*) 1000
@@ -255,14 +265,14 @@ view model =
     div [ class "container" ]
         [ navbar
         , br [] []
-        , searchInput model.currentInput model.suggestedLocations
-        , showLocationResults model.suggestedLocations
-        , showPredictions model.currently model.predictions
+        , searchInput model
+        , showLocationResults model
+        , showPredictionResults model
         ]
 
 
-searchInput : String -> List Location -> Html Msg
-searchInput val locations =
+searchInput : AutoComplete a -> Html Msg
+searchInput model =
     let
         inputField =
             input
@@ -271,13 +281,12 @@ searchInput val locations =
                 , placeholder "Name of a city"
                 , id "search"
                 , onInput NewInput
-                , value val
+                , value model.currentInput
                 , autofocus True
-                , list "locations"
                 ]
                 []
     in
-        form [ onSubmit << LocationQuery <| val ] [ div [ class "form-group" ] [ inputField ] ]
+        form [ onSubmit <| LocationQuery model.currentInput, autocomplete False ] [ div [ class "form-group" ] [ inputField ] ]
 
 
 navbar : Html Msg
@@ -292,24 +301,29 @@ navbar =
         nav [ navclass ] [ div [ class "navbar-nav" ] [ navlink "Home" ] ]
 
 
-showLocationResults : List Location -> Html Msg
-showLocationResults locations =
+showLocationResults : AutoComplete a -> Html Msg
+showLocationResults { suggestedLocations, showSuggestions } =
     let
         locationCard l =
-            div [ class "card border border-secondary", onClick (LocationSelect l) ]
-                [ div [ class "card-body" ] [ text << formatLocationResult <| l ] ]
+            div
+                [ class "card border-secondary location-card"
+                , onClick (LocationSelect l)
+                ]
+                [ div [ class "card-body" ] [ text <| formatLocationResult l ] ]
     in
-        case locations of
-            [] ->
-                div [] []
-
-            _ ->
-                div [] << List.map locationCard <| locations
+        div [ hidden <| not showSuggestions ] <| List.map locationCard suggestedLocations
 
 
-predictionsTable : List Prediction -> Html Msg
-predictionsTable preds =
+
+-- No need to show current if no other predictions available
+
+
+showPredictionResults : Model -> Html Msg
+showPredictionResults { currently, predictions } =
     let
+        predictionsTable preds =
+            table [ class "table" ] [ header, tableBody preds ]
+
         header =
             thead [ class "thead-inverse" ] [ headerRow ]
 
@@ -320,36 +334,22 @@ predictionsTable preds =
                 , th [] [ text "Probability" ]
                 ]
 
-        tableBody =
+        tableBody preds =
             tbody [] <| List.map predToRow preds
 
         predToRow pred =
             tr []
-                [ td [] [ text << DF.format "%A" <| pred.time ]
+                [ td [] [ text <| DF.format "%A" pred.time ]
                 , td [] [ text pred.summary ]
-                , td [] [ text << toString <| pred.precipProbability ]
+                , td [] [ text <| toString pred.precipProbability ]
                 ]
     in
-        table [ class "table" ] [ header, tableBody ]
+        case currently of
+            Nothing ->
+                div [] []
 
-
-
--- No need to show current if no other predictions available
-
-
-showPredictions : Maybe Prediction -> List Prediction -> Html Msg
-showPredictions current preds =
-    case current of
-        Nothing ->
-            div [] []
-
-        Just c ->
-            case preds of
-                [] ->
-                    div [] []
-
-                _ ->
-                    predictionsTable (c :: preds)
+            Just c ->
+                predictionsTable (c :: predictions)
 
 
 formatLocationResult : Location -> String
