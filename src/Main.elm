@@ -272,7 +272,7 @@ view model =
 
 
 searchInput : AutoComplete a -> Html Msg
-searchInput model =
+searchInput { currentInput } =
     let
         inputField =
             input
@@ -281,12 +281,12 @@ searchInput model =
                 , placeholder "Name of a city"
                 , id "search"
                 , onInput NewInput
-                , value model.currentInput
+                , value currentInput
                 , autofocus True
                 ]
                 []
     in
-        form [ onSubmit <| LocationQuery model.currentInput, autocomplete False ] [ div [ class "form-group" ] [ inputField ] ]
+        form [ onSubmit <| LocationQuery currentInput, autocomplete False ] [ div [ class "form-group" ] [ inputField ] ]
 
 
 navbar : Html Msg
