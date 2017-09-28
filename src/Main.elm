@@ -1,6 +1,6 @@
 module Main exposing (main)
 
-import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th, datalist, option)
+import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th, datalist, option, span, button)
 import Html.Attributes exposing (class, hidden, type_, placeholder, id, value, href, autocomplete, autofocus)
 import Html.Events exposing (onInput, onSubmit, onClick)
 import Html.Attributes exposing (class)
@@ -107,6 +107,9 @@ update msg model =
 
         NewInput newInput ->
             handleSearchInput newInput model
+
+        ClearInput ->
+            handleSearchInput "" model
 
         FetchPredictionResult location ->
             ( model, fetchPredictionResult location )
@@ -244,6 +247,7 @@ locationDecoder =
 type Msg
     = NoOp
     | NewInput String
+    | ClearInput
     | LocationQuery String
     | LocationSelect Location
     | LocationResult (Result Http.Error (List Location))
@@ -285,8 +289,25 @@ searchInput { currentInput } =
                 , autofocus True
                 ]
                 []
+
+        inputGroup =
+            div [ class "input-group" ] [ inputField, clearButton ]
+
+        clearButton =
+            span [ class "input-group-btn" ]
+                [ button
+                    [ class "btn btn-secondary"
+                    , type_ "button"
+                    , onClick ClearInput
+                    ]
+                    [ text "Clear" ]
+                ]
     in
-        form [ onSubmit <| LocationQuery currentInput, autocomplete False ] [ div [ class "form-group" ] [ inputField ] ]
+        form
+            [ onSubmit <| LocationQuery currentInput
+            , autocomplete False
+            ]
+            [ div [ class "form-group" ] [ inputGroup ] ]
 
 
 navbar : Html Msg
@@ -322,10 +343,10 @@ showPredictionResults : Model -> Html Msg
 showPredictionResults { currently, predictions } =
     let
         predictionsTable preds =
-            table [ class "table" ] [ header, tableBody preds ]
+            table [ class "table table-striped" ] [ header, tableBody preds ]
 
         header =
-            thead [ class "thead-inverse" ] [ headerRow ]
+            thead [] [ headerRow ]
 
         headerRow =
             tr []
