@@ -39,6 +39,9 @@ type alias Model =
     , showPredictions : Bool
     , currently : Maybe Prediction
     , predictions : List Prediction
+    , error : Bool
+    , showError : Bool
+    , errorMsg : String
     }
 
 
@@ -78,6 +81,10 @@ type alias AutoComplete a =
     }
 
 
+type alias AppError a =
+    { a | error : Bool, showError : Bool, errorMsg : String }
+
+
 init : ( Model, Cmd Msg )
 init =
     let
@@ -88,7 +95,7 @@ init =
             "New York City, New York"
 
         model =
-            Model currentInput False (Just selectedLocation) [] False False False Nothing []
+            Model currentInput False (Just selectedLocation) [] False False False Nothing [] False False ""
     in
         ( model
         , fetchPredictionResult model.selectedLocation
@@ -127,7 +134,7 @@ update msg model =
                 _ =
                     Debug.log "Error" error
             in
-                ( model, Cmd.none )
+                ( toggleAlert model <| toString error, Cmd.none )
 
         LocationQuery query ->
             ( model, fetchLocationResult query )
@@ -148,7 +155,10 @@ update msg model =
                 _ =
                     Debug.log "Error" error
             in
-                ( model, Cmd.none )
+                ( toggleAlert model <| toString error, Cmd.none )
+
+        CloseAlert ->
+            ( toggleAlert model "", Cmd.none )
 
 
 handleLocationSelect : Maybe Location -> Cmd Msg
@@ -208,6 +218,18 @@ handleSearchInput newInput model =
         ( { model | currentInput = newInput, showSuggestions = False }, Cmd.none )
 
 
+toggleAlert : AppError a -> String -> AppError a
+toggleAlert model errorMsg =
+    let
+        error =
+            not model.error
+
+        showError =
+            not model.showError
+    in
+        { model | showError = showError, error = error, errorMsg = errorMsg }
+
+
 
 -- DECODERS
 
@@ -258,6 +280,7 @@ type Msg
             , predictions : List Prediction
             }
         )
+    | CloseAlert
 
 
 
@@ -271,6 +294,7 @@ view model =
         , br [] []
         , searchInput model
         , showLocationResults model
+        , errorAlert model
         , showPredictionResults model
         ]
 
@@ -371,6 +395,19 @@ showPredictionResults { currently, predictions } =
 
             Just c ->
                 predictionsTable (c :: predictions)
+
+
+errorAlert : AppError a -> Html Msg
+errorAlert { showError } =
+    let
+        btn =
+            button [ class "close", onClick CloseAlert ] [ span [] [ text "×" ] ]
+    in
+        div
+            [ class "alert alert-danger"
+            , hidden <| not showError
+            ]
+            [ btn, text "Oops, something went wrong" ]
 
 
 formatLocationResult : Location -> String
