@@ -2,12 +2,12 @@ module Main exposing (main)
 
 import Html exposing (Html, div, text, program, br, input, form, nav, a, table, thead, tbody, td, tr, th, datalist, option, span, button)
 import Html.Attributes exposing (class, hidden, type_, placeholder, id, value, href, autocomplete, autofocus)
-import Html.Events exposing (onInput, onSubmit, onClick)
+import Html.Events exposing (onInput, onSubmit, onClick, onBlur, keyCode, on)
 import Html.Attributes exposing (class)
 import Http
 import Date
 import Date.Format as DF
-import Json.Decode as Decode
+import Json.Decode as Json
 
 
 -- USER DEFINED IMPORTS
@@ -112,11 +112,20 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
+        KeyDown code ->
+            if code == 27 then
+                ( { model | showSuggestions = False }, Cmd.none )
+            else
+                ( model, Cmd.none )
+
         NewInput newInput ->
             handleSearchInput newInput model
 
         ClearInput ->
             handleSearchInput "" model
+
+        ToggleSuggestions ->
+            ( { model | showSuggestions = False }, Cmd.none )
 
         FetchPredictionResult location ->
             ( model, fetchPredictionResult location )
@@ -184,9 +193,9 @@ fetchPredictionResult l =
                     Http.get url responseDecoder
 
                 responseDecoder =
-                    Decode.map2 PredictionResponse
-                        (Decode.field "currently" predictionDecoder)
-                        (Decode.at [ "hourly", "data" ] <| Decode.list predictionDecoder)
+                    Json.map2 PredictionResponse
+                        (Json.field "currently" predictionDecoder)
+                        (Json.at [ "hourly", "data" ] <| Json.list predictionDecoder)
             in
                 Http.send PredictionResult request
 
@@ -201,7 +210,7 @@ fetchLocationResult query =
             Http.get url responseDecoder
 
         responseDecoder =
-            Decode.list locationDecoder
+            Json.list locationDecoder
     in
         Http.send LocationResult request
 
@@ -234,32 +243,32 @@ toggleAlert model errorMsg =
 -- DECODERS
 
 
-predictionDecoder : Decode.Decoder Prediction
+predictionDecoder : Json.Decoder Prediction
 predictionDecoder =
     let
         dateDecoder =
-            Decode.andThen convert Decode.float
+            Json.andThen convert Json.float
 
         convert =
-            Decode.succeed << Date.fromTime << (*) 1000
+            Json.succeed << Date.fromTime << (*) 1000
     in
-        Decode.map3 Prediction
-            (Decode.field "time" dateDecoder)
-            (Decode.field "precipProbability" Decode.float)
-            (Decode.field "summary" Decode.string)
+        Json.map3 Prediction
+            (Json.field "time" dateDecoder)
+            (Json.field "precipProbability" Json.float)
+            (Json.field "summary" Json.string)
 
 
-locationDecoder : Decode.Decoder Location
+locationDecoder : Json.Decoder Location
 locationDecoder =
-    Decode.map8 Location
-        (Decode.field "geonameId" Decode.float)
-        (Decode.field "locationName" Decode.string)
-        (Decode.field "longitude" Decode.float)
-        (Decode.field "latitude" Decode.float)
-        (Decode.field "countryCode" Decode.string)
-        (Decode.field "countryName" Decode.string)
-        (Decode.field "admin1Code" Decode.string)
-        (Decode.field "admin1Name" Decode.string)
+    Json.map8 Location
+        (Json.field "geonameId" Json.float)
+        (Json.field "locationName" Json.string)
+        (Json.field "longitude" Json.float)
+        (Json.field "latitude" Json.float)
+        (Json.field "countryCode" Json.string)
+        (Json.field "countryName" Json.string)
+        (Json.field "admin1Code" Json.string)
+        (Json.field "admin1Name" Json.string)
 
 
 
@@ -268,8 +277,10 @@ locationDecoder =
 
 type Msg
     = NoOp
+    | KeyDown Int
     | NewInput String
     | ClearInput
+    | ToggleSuggestions
     | LocationQuery String
     | LocationSelect Location
     | LocationResult (Result Http.Error (List Location))
@@ -311,6 +322,8 @@ searchInput { currentInput } =
                 , onInput NewInput
                 , value currentInput
                 , autofocus True
+                , onBlur ToggleSuggestions
+                , onKeyDown KeyDown
                 ]
                 []
 
@@ -413,3 +426,8 @@ errorAlert { showError } =
 formatLocationResult : Location -> String
 formatLocationResult location =
     location.locationName ++ ", " ++ location.admin1Name
+
+
+onKeyDown : (Int -> Msg) -> Html.Attribute Msg
+onKeyDown tagger =
+    on "keydown" (Json.map tagger keyCode)
